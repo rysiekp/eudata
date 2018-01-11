@@ -1,34 +1,26 @@
 package pl.mp.allegro.eudata
 
-import java.io.{BufferedWriter, File, FileWriter}
+import java.io.{File, PrintWriter}
 
 object OutputHandler {
-  def exportToCsv(currencies: List[String], countries: List[CountryData], filename: String): Unit = {
-    val out = new File(filename + "csv")
-    val bw = new BufferedWriter(new FileWriter(out))
+  def exportToCsv(countries: Iterator[CountryContracts], filename: String): Unit = {
+    val pw = new PrintWriter(new File(filename + ".txt"))
 
-    // csv header
-    bw.write("COUNTRY_ISO_CODE,CONTRACTS")
-    currencies.foreach {
-      curr => bw.write("," + curr)
-    }
-    bw.write("\n")
-
-    countries.map(countryDataToCsv(_, currencies)).foreach(bw.write)
-    bw.close()
+    countries.map(countryDataToCsv).foreach(pw.write)
+    pw.close()
   }
 
-  def countryDataToCsv(data: CountryData, currencies: List[String], sep: Char = ','): String = {
-    var res = data.isoCode + "," + data.contracts.toString
-    currencies.foldLeft(res) {
-      // for each currency we print it's value with 2 decimal places
-      (acc, curr) => "%s,%.2f".format(acc, data.contractsValue.getOrElse(curr, 0L) / 100.0)
-    } + "\n"
+  def countryDataToCsv(data: CountryContracts): String = {
+    var res = data.isoCode + ":\nTotal contracts: " + data.contracts.toString + "\nTotal cost:\n"
+
+    data.contractsValue.foldLeft(res) {
+      (acc, curr) => "%s\t%s %.2f\n".format(acc, curr._1, curr._2 / 100.0)
+    } + "______________________________\n"
   }
 }
 
 object InputHandler {
-  def listFilesInDir(dirname: String, extensons: List[String] = List()): Option[Stream[File]] = {
+  def listFilesInDir(dirname: String, extensons: List[String] = List()): Option[Iterator[File]] = {
     val dir = new File(dirname)
 
     if (!dir.exists) {
@@ -44,9 +36,9 @@ object InputHandler {
     if (extensons.nonEmpty) {
       Some(dir.listFiles(_.isFile).filter({
         file => extensons.exists(file.getName.endsWith(_))
-      }) toStream)
+      }) toIterator)
     } else {
-      Some(dir.listFiles.toStream)
+      Some(dir.listFiles toIterator)
     }
   }
 }
