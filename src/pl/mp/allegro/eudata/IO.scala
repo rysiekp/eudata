@@ -2,43 +2,35 @@ package pl.mp.allegro.eudata
 
 import java.io.{File, PrintWriter}
 
-object OutputHandler {
-  def exportToCsv(countries: Iterator[CountryContracts], filename: String): Unit = {
-    val pw = new PrintWriter(new File(filename + ".txt"))
+import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 
-    countries.map(countryDataToCsv).foreach(pw.write)
+object IO {
+  def readFiles(dataDir: String, sc: SparkContext): RDD[String] = {
+    sc.wholeTextFiles(dataDir + "/*/*.xml").map(_._2)
+  }
+
+  def exportToFile(countries: Iterable[CountryContracts],
+                   filename: String,
+                   ext: String = ".csv",
+                   sep: String = ","): Unit = {
+    val pw = new PrintWriter(new File(filename + ext))
+
+    val currencies = countries.flatMap(_.contractsValue.keys).toSet
+    pw.write(csvHeader(currencies))
+
+    countries.map(countryData(_, currencies)).foreach(pw.write)
+
     pw.close()
   }
 
-  def countryDataToCsv(data: CountryContracts): String = {
-    var res = data.isoCode + ":\nTotal contracts: " + data.contracts.toString + "\nTotal cost:\n"
+  private def csvHeader(currencies: Iterable[String], sep: String = ","): String =
+    currencies.foldLeft("ISO_CODE" + sep + "CONTRACTS") {
+      (acc, curr) => acc + sep + curr
+    } + "\n"
 
-    data.contractsValue.foldLeft(res) {
-      (acc, curr) => "%s\t%s %.2f\n".format(acc, curr._1, curr._2 / 100.0)
-    } + "______________________________\n"
-  }
-}
-
-object InputHandler {
-  def listFilesInDir(dirname: String, extensons: List[String] = List()): Option[Iterator[File]] = {
-    val dir = new File(dirname)
-
-    if (!dir.exists) {
-      System.err.println("%s doesn't exist".format(dirname))
-      return None
-    }
-
-    if (!dir.isDirectory) {
-      System.err.println("%s is not a directory".format(dirname))
-      return None
-    }
-
-    if (extensons.nonEmpty) {
-      Some(dir.listFiles(_.isFile).filter({
-        file => extensons.exists(file.getName.endsWith(_))
-      }) toIterator)
-    } else {
-      Some(dir.listFiles toIterator)
-    }
-  }
+  private def countryData(country: CountryContracts, currencies: Iterable[String], sep: String = ","): String =
+    currencies.foldLeft(country.isoCode + sep + country.contracts) {
+      (acc, curr) => acc + sep + "%.2f".format(country.contractsValue.getOrZero(curr))
+    } + "\n"
 }

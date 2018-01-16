@@ -1,21 +1,26 @@
 package pl.mp.allegro.eudata
 
-import pl.mp.allegro.eudata.CurrencyMap.CurrencyMap
+@SerialVersionUID(101L)
+class CountryContracts(
+    val isoCode: String,
+    val contracts: Int = 0,
+    val contractsValue: CurrencyMap = CurrencyMap.empty)
+  extends Serializable {
 
-import scalaz.Scalaz._
-import scala.collection.immutable
+  def this(isoCode: String, contractValues: CurrencyMap) = this(isoCode, 0, contractValues)
 
-object CurrencyMap {
-  type CurrencyMap = immutable.Map[String, Long]
-}
-
-class CountryContracts(val isoCode: String,
-                       var contracts: Int = 0,
-                       var contractsValue: CurrencyMap = new immutable.HashMap()) {
-
-  def +(that: CountryContracts): CountryContracts = {
-    new CountryContracts(isoCode,
+  def +(that: CountryContracts): CountryContracts =
+    new CountryContracts(
+      isoCode,
       contracts + that.contracts,
-      contractsValue |+| that.contractsValue)
+      contractsValue + that.contractsValue)
+
+
+  override def toString: String = {
+    val res = isoCode + ":\nTotal contracts: " + contracts.toString + "\nTotal cost:\n"
+
+    contractsValue.foldLeft(res) {
+      (acc, curr) => "%s\t%s %.2f\n".format(acc, curr._1, curr._2)
+    } + "______________________________\n"
   }
 }

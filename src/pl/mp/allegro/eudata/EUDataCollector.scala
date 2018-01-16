@@ -1,68 +1,62 @@
 package pl.mp.allegro.eudata
 
-import java.io.File
 import scala.xml.{NodeSeq, XML}
+import org.apache.spark.{SparkConf, SparkContext}
 
 object EUDataCollector {
   val ContractNoticeCode = "3"
   val ContractAwardsCode = "7"
 
-
   def main(args: Array[String]): Unit = {
+    val sc = new SparkContext(new SparkConf().setAppName("eudata").setMaster("local[*]"))
 
     if (args.length < 1) {
       System.err.println("Data directory not provided")
       System.exit(1)
     }
-
-    val (data_dir, output_filename) = if (args.length == 1) {
+    val (dataDir, outputFilename) = if (args.length == 1)
       (args(0), "out")
-    } else {
+    else
       (args(0), args(1))
-    }
 
-    val dirs = InputHandler.listFilesInDir(data_dir).getOrElse(Stream.empty)
+    val files = IO.readFiles(dataDir, sc)
 
-    val files = dirs.flatMap {
-      dir => InputHandler.listFilesInDir(dir.getAbsolutePath, List("xml")).getOrElse(Stream.empty)
-    }
+    val stats =
+      files.flatMap(getContract)
+      .keyBy(_.isoCode)
+      .reduceByKey(_ + _)
+      .values
+      .collect
 
-    val stats = files.flatMap(getContract).toStream.groupBy(_.isoCode).map {
-      case (k, v) => (k, v.fold(new CountryContracts(k))(_ + _))
-    } valuesIterator
-
-    OutputHandler.exportToCsv(stats, output_filename)
+    IO.exportToFile(stats, outputFilename)
   }
 
 
-  def getContract(file: File): Option[CountryContracts] = {
-    val xml = XML.loadFile(file)
+  def getContract(file: String): Option[CountryContracts] = {
+    val xml = XML.loadString(file)
 
-    val noticeCode = xml \\ "CODED_DATA_SECTION" \\ "CODIF_DATA" \\ "TD_DOCUMENT_TYPE" \ "@CODE" text
-    val countryCode = xml \\ "CODED_DATA_SECTION" \\ "NOTICE_DATA" \\ "ISO_COUNTRY" \ "@VALUE" text
+    val noticeCode = (xml \\ "CODED_DATA_SECTION" \\ "CODIF_DATA" \\ "TD_DOCUMENT_TYPE" \ "@CODE").text
+    val countryCode = (xml \\ "CODED_DATA_SECTION" \\ "NOTICE_DATA" \\ "ISO_COUNTRY" \ "@VALUE").text
 
     noticeCode match {
       case ContractNoticeCode => Some(new CountryContracts(countryCode, contracts = 1))
       case ContractAwardsCode =>
         val awardedContracts = xml \\ "AWARD_CONTRACT"
-        val contractsValues = awardedContracts.flatMap(getAwardedContractValues)
-            .groupBy(_.currency)
-            .mapValues(_.map(_.value).sum)
-        Some(new CountryContracts(countryCode, contracts = 0, contractsValues))
+        val contractValues = new CurrencyMap(awardedContracts.flatMap(getAwardedContractValues)
+                                                             .groupBy(_._1)
+                                                             .mapValues(_.map(_._2).sum))
+        Some(new CountryContracts(countryCode, contractValues))
       case _ => None
     }
   }
 
-  def getAwardedContractValues(xml: NodeSeq): Option[Cost] = {
-    val currency = xml \\ "VAL_TOTAL" \\ "@CURRENCY" text
-    var value = xml \\ "VAL_TOTAL" text
+  def getAwardedContractValues(xml: NodeSeq): Option[(String, Double)] = {
+    val currency = (xml \\ "VAL_TOTAL" \\ "@CURRENCY").text
+    val value = (xml \\ "VAL_TOTAL").text
 
-    val cost = new Cost(currency, value)
-
-    if (cost.isEmpty) {
+    if (currency.nonEmpty && value.nonEmpty)
+      Some(currency, value.toDouble)
+    else
       None
-    } else {
-      Some(cost)
-    }
   }
 }

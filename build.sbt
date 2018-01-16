@@ -1,8 +1,9 @@
 name := "Allegro"
 
-version := "1.0"
+version := "2.0"
 
-scalaVersion := "2.12.4"
+scalaVersion := "2.11.1"
 
 libraryDependencies += "org.scala-lang.modules" %% "scala-xml" % "1.0.6"
-libraryDependencies += "org.scalaz" %% "scalaz-core" % "7.2.18"
+libraryDependencies += "org.apache.spark" %% "spark-core" % "2.2.1"
+
